@@ -18,22 +18,16 @@ jobs:
         run: |
           curl -L -o apictl.tar.gz https://github.com/wso2/product-apim-tooling/releases/download/v4.7.2/apictl-4.7.2-linux-amd64.tar.gz
           tar -xzf apictl.tar.gz
+          ls -la
+          ls -la apictl
 
       - name: Add apictl to PATH
         run: |
           echo "$GITHUB_WORKSPACE/apictl" >> $GITHUB_PATH
 
       - name: Check apictl version
-        run: apictl version
-
-      - name: Debug workspace contents
         run: |
-          echo "=== Workspace root ==="
-          ls -la ${{ github.workspace }}
-          echo "=== kq-flights-api folder ==="
-          ls -la ${{ github.workspace }}/kq-flights-api || echo "FOLDER MISSING"
-          echo "=== Any api.yaml anywhere ==="
-          find ${{ github.workspace }} -name "api.yaml" || echo "NO api.yaml FOUND"
+          apictl version
 
       - name: Configure WSO2 environment
         run: |
@@ -47,9 +41,15 @@ jobs:
             -p "${{ secrets.WSO2_PASSWORD }}" \
             -k
 
+      - name: Show API project
+        run: |
+          pwd
+          ls -la
+          ls -la NewFlightsAPI
+
       - name: Import API
         run: |
           apictl import api \
-            -f "${{ github.workspace }}/kq-flights-api" \
+            -f NewFlightsAPI \
             -e dev \
             -k
