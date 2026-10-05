@@ -14,14 +14,16 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Download apictl
+      - name: Download and extract apictl
         run: |
           curl -L -o apictl.tar.gz https://github.com/wso2/product-apim-tooling/releases/download/v4.7.2/apictl-4.7.2-linux-amd64.tar.gz
           tar -xzf apictl.tar.gz
+          ls -la
+          ls -la apictl
 
       - name: Add apictl to PATH
         run: |
-          echo "$GITHUB_WORKSPACE/apictl-4.7.2-linux-amd64" >> $GITHUB_PATH
+          echo "$GITHUB_WORKSPACE/apictl" >> $GITHUB_PATH
 
       - name: Check apictl version
         run: |
@@ -42,6 +44,6 @@ jobs:
       - name: Import API
         run: |
           apictl import api \
-            -f "${{ github.workspace }}" \
+            -f "${{ github.workspace }}/kq-flights-api" \
             -e dev \
             -k
