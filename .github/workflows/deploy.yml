@@ -40,4 +40,8 @@ jobs:
 
       - name: Import API
         run: |
-          apictl import api -f . -e dev -k
+          apictl import api \
+            -f . \
+            -e dev \
+            -k \
+            --verbose
