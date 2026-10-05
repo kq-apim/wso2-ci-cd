@@ -1,0 +1,116 @@
+components:
+  schemas:
+    User:
+      properties:
+        createdAt:
+          example: "2026-03-27T10:00:00Z"
+          format: date-time
+          type: string
+        email:
+          example: jane.doe@example.com
+          format: email
+          type: string
+        id:
+          example: 1042
+          format: int64
+          type: integer
+        name:
+          example: Jane Doe
+          type: string
+      required:
+      - id
+      - name
+      - email
+      type: object
+    UserCreationInput:
+      properties:
+        email:
+          example: jane.doe@example.com
+          format: email
+          type: string
+        name:
+          example: Jane Doe
+          type: string
+      required:
+      - name
+      - email
+      type: object
+info:
+  description: A sample API for managing user profiles. Learn more at the [OpenAPI
+    Specification GitHub](https://github.com/oai/openapi-specification).
+  title: User Management API
+  version: 1.0.0
+openapi: 3.0.3
+paths:
+  /users:
+    get:
+      description: Returns a list of all registered users.
+      operationId: listUsers
+      parameters:
+      - description: How many items to return at one time (max 100)
+        in: query
+        name: limit
+        required: false
+        schema:
+          default: 20
+          format: int32
+          type: integer
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                items:
+                  $ref: '#/components/schemas/User'
+                type: array
+          description: A successful response containing the array of users.
+        "500":
+          description: Internal server error.
+      summary: List all users
+    post:
+      description: Adds a new user profile to the system.
+      operationId: createUser
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UserCreationInput'
+        description: User data to create
+        required: true
+      responses:
+        "201":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/User'
+          description: User successfully created.
+        "400":
+          description: Invalid request payload.
+      summary: Create a new user
+  /users/{userId}:
+    get:
+      description: Retrieves a specific user profile using their unique numeric ID.
+      operationId: getUserById
+      parameters:
+      - description: The numeric ID of the user to retrieve.
+        in: path
+        name: userId
+        required: true
+        schema:
+          format: int64
+          type: integer
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/User'
+          description: User found.
+        "404":
+          description: User not found.
+      summary: Get a user by ID
+servers:
+- description: Production server
+  url: https://example.com
+- description: Staging server for testing
+  url: https://example.com
