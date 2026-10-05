@@ -109,6 +109,22 @@ paths:
         "404":
           description: User not found.
       summary: Get a user by ID
+  /user/{userId}:
+    delete:
+      description: Deletes the user's record using their unique identifier
+      operationId: deleteUserById
+      parameters:
+        - description: The numeric ID of the user to retrieve.
+          in: path
+          name: userId
+          required: true
+          schema:
+            format: int64
+            type: integer
+      responses:
+        "404":
+          description: User not found.
+      summary: Get a user by ID
 servers:
 - description: Production server
   url: https://example.com
