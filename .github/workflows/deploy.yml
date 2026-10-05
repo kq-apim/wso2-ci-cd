@@ -44,6 +44,6 @@ jobs:
       - name: Import API
         run: |
           apictl import api \
-            -f "${{ github.workspace }}/kq-flights-api" \
+            -f "${{ github.workspace }}/NewFlightsAPI" \
             -e dev \
             -k
