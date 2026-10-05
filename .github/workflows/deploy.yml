@@ -1,3 +1,4 @@
+```yaml
 name: Deploy WSO2 API
 
 on:
@@ -21,7 +22,7 @@ jobs:
 
       - name: Add apictl to PATH
         run: |
-          echo "$GITHUB_WORKSPACE/apictl-4.7.2-linux-amd64/apictl" >> $GITHUB_PATH
+          echo "$GITHUB_WORKSPACE/apictl-4.7.2-linux-amd64" >> $GITHUB_PATH
 
       - name: Check apictl version
         run: |
@@ -45,3 +46,4 @@ jobs:
             -f "${{ github.workspace }}" \
             -e dev \
             -k
+```
