@@ -29,8 +29,17 @@ jobs:
 
     steps:
 
+      # ----------------------------------------------------------
+      # Checkout source code
+      # ----------------------------------------------------------
+
       - name: Checkout repository
         uses: actions/checkout@v4
+
+
+      # ----------------------------------------------------------
+      # Check WSO2 API project structure
+      # ----------------------------------------------------------
 
       - name: Check API project structure
         run: |
@@ -53,11 +62,18 @@ jobs:
 
           echo "WSO2 API project structure is valid."
 
+
+      # ----------------------------------------------------------
+      # Validate OpenAPI specification
+      # ----------------------------------------------------------
+
       - name: Validate OpenAPI specification
         run: |
           echo "Validating OpenAPI specification..."
 
           npx @redocly/cli lint Definitions/swagger.yaml
+
+          echo "OpenAPI validation completed successfully."
 
 
   # ============================================================
@@ -70,20 +86,27 @@ jobs:
 
     needs: validate
 
-    # The GitHub Environment determines which
-    # URL and credentials are supplied.
+    # GitHub Environment determines:
+    # - WSO2 URL
+    # - username
+    # - password
+    # - approval requirements
     environment:
       name: ${{ github.event.inputs.environment || 'dev' }}
 
     steps:
 
+      # ----------------------------------------------------------
+      # Checkout source code
+      # ----------------------------------------------------------
+
       - name: Checkout repository
         uses: actions/checkout@v4
 
 
-      # ========================================================
-      # Install WSO2 apictl
-      # ========================================================
+      # ----------------------------------------------------------
+      # Download WSO2 apictl
+      # ----------------------------------------------------------
 
       - name: Download and extract apictl
         run: |
@@ -100,19 +123,27 @@ jobs:
           echo "apictl downloaded successfully."
 
 
+      # ----------------------------------------------------------
+      # Add apictl to PATH
+      # ----------------------------------------------------------
+
       - name: Add apictl to PATH
         run: |
           echo "/tmp/apictl/apictl" >> $GITHUB_PATH
 
+
+      # ----------------------------------------------------------
+      # Verify apictl
+      # ----------------------------------------------------------
 
       - name: Check apictl version
         run: |
           apictl version
 
 
-      # ========================================================
-      # Configure target WSO2 environment
-      # ========================================================
+      # ----------------------------------------------------------
+      # Configure WSO2 environment
+      # ----------------------------------------------------------
 
       - name: Configure WSO2 environment
         run: |
@@ -122,9 +153,9 @@ jobs:
             --apim "${{ secrets.WSO2_APIM_URL }}"
 
 
-      # ========================================================
+      # ----------------------------------------------------------
       # Login to WSO2 API Manager
-      # ========================================================
+      # ----------------------------------------------------------
 
       - name: Login to WSO2 API Manager
         run: |
@@ -136,9 +167,9 @@ jobs:
             -k
 
 
-      # ========================================================
+      # ----------------------------------------------------------
       # Deploy WSO2 API
-      # ========================================================
+      # ----------------------------------------------------------
 
       - name: Deploy API
         run: |
