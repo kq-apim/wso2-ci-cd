@@ -1,26 +1,30 @@
 name: WSO2 API CI/CD
 
 on:
+
+  # ============================================================
+  # PUSH TO DEV OR MAIN
+  # ============================================================
+
   push:
+    branches:
+      - dev
+      - main
+
+
+  # ============================================================
+  # PULL REQUEST TO MAIN
+  # ============================================================
+
+  pull_request:
     branches:
       - main
 
-  workflow_dispatch:
-    inputs:
-      environment:
-        description: "WSO2 environment to deploy to"
-        required: true
-        default: "dev"
-        type: choice
-        options:
-          - dev
-          - uat
-          - prod
 
 jobs:
 
   # ============================================================
-  # CI - VALIDATE API
+  # 1. VALIDATE API
   # ============================================================
 
   validate:
@@ -28,10 +32,6 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-
-      # ----------------------------------------------------------
-      # Checkout source code
-      # ----------------------------------------------------------
 
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -60,6 +60,11 @@ jobs:
             exit 1
           fi
 
+          if [ ! -f "redocly.yaml" ]; then
+            echo "ERROR: redocly.yaml not found"
+            exit 1
+          fi
+
           echo "WSO2 API project structure is valid."
 
 
@@ -71,34 +76,40 @@ jobs:
         run: |
           echo "Validating OpenAPI specification..."
 
-          npx @redocly/cli lint Definitions/swagger.yaml
+          npx @redocly/cli lint Definitions/swagger.yaml \
+            --config redocly.yaml
 
           echo "OpenAPI validation completed successfully."
 
 
   # ============================================================
-  # CD - DEPLOY API
+  # 2. DEPLOY TO DEV
   # ============================================================
+  #
+  # Trigger:
+  # Push to dev
+  #
+  # Flow:
+  #
+  # dev
+  #  ↓
+  # validate
+  #  ↓
+  # DEV
+  #
 
-  deploy:
-    name: Deploy API
+  deploy-dev:
+    name: Deploy to DEV
     runs-on: ubuntu-latest
 
     needs: validate
 
-    # GitHub Environment determines:
-    # - WSO2 URL
-    # - username
-    # - password
-    # - approval requirements
+    if: github.event_name == 'push' && github.ref == 'refs/heads/dev'
+
     environment:
-      name: ${{ github.event.inputs.environment || 'dev' }}
+      name: dev
 
     steps:
-
-      # ----------------------------------------------------------
-      # Checkout source code
-      # ----------------------------------------------------------
 
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -120,7 +131,117 @@ jobs:
 
           tar -xzf /tmp/apictl.tar.gz -C /tmp/apictl
 
-          echo "apictl downloaded successfully."
+
+      # ----------------------------------------------------------
+      # Add apictl to PATH
+      # ----------------------------------------------------------
+
+      - name: Add apictl to PATH
+        run: |
+          echo "/tmp/apictl/apictl" >> $GITHUB_PATH
+
+
+      # ----------------------------------------------------------
+      # Check apictl
+      # ----------------------------------------------------------
+
+      - name: Check apictl version
+        run: |
+          apictl version
+
+
+      # ----------------------------------------------------------
+      # Configure DEV WSO2 environment
+      # ----------------------------------------------------------
+
+      - name: Configure WSO2 environment
+        run: |
+          apictl add env target \
+            --apim "${{ secrets.WSO2_APIM_URL }}"
+
+
+      # ----------------------------------------------------------
+      # Login
+      # ----------------------------------------------------------
+
+      - name: Login to WSO2 API Manager
+        run: |
+          apictl login target \
+            -u "${{ secrets.WSO2_USERNAME }}" \
+            -p "${{ secrets.WSO2_PASSWORD }}" \
+            -k
+
+
+      # ----------------------------------------------------------
+      # Deploy API
+      # ----------------------------------------------------------
+
+      - name: Deploy API
+        run: |
+          echo "Deploying API to DEV..."
+
+          apictl import api \
+            -f . \
+            -e target \
+            -k \
+            --update \
+            --verbose
+
+          echo "DEV deployment completed successfully."
+
+
+  # ============================================================
+  # 3. DEPLOY TO UAT
+  # ============================================================
+  #
+  # Trigger:
+  # Pull Request targeting main
+  #
+  # Flow:
+  #
+  # dev
+  #  ↓
+  # Pull Request → main
+  #  ↓
+  # validate
+  #  ↓
+  # UAT approval
+  #  ↓
+  # UAT
+  #
+
+  deploy-uat:
+    name: Deploy to UAT
+    runs-on: ubuntu-latest
+
+    needs: validate
+
+    if: github.event_name == 'pull_request' && github.base_ref == 'main'
+
+    environment:
+      name: uat
+
+    steps:
+
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+
+      # ----------------------------------------------------------
+      # Download WSO2 apictl
+      # ----------------------------------------------------------
+
+      - name: Download and extract apictl
+        run: |
+          echo "Downloading WSO2 apictl..."
+
+          mkdir -p /tmp/apictl
+
+          curl -L \
+            -o /tmp/apictl.tar.gz \
+            https://github.com/wso2/product-apim-tooling/releases/download/v4.7.2/apictl-4.7.2-linux-amd64.tar.gz
+
+          tar -xzf /tmp/apictl.tar.gz -C /tmp/apictl
 
 
       # ----------------------------------------------------------
@@ -133,7 +254,7 @@ jobs:
 
 
       # ----------------------------------------------------------
-      # Verify apictl
+      # Check apictl
       # ----------------------------------------------------------
 
       - name: Check apictl version
@@ -142,25 +263,23 @@ jobs:
 
 
       # ----------------------------------------------------------
-      # Configure WSO2 environment
+      # Configure UAT WSO2 environment
       # ----------------------------------------------------------
 
       - name: Configure WSO2 environment
         run: |
-          echo "Configuring WSO2 API Manager environment..."
+          echo "Configuring UAT WSO2 environment..."
 
           apictl add env target \
             --apim "${{ secrets.WSO2_APIM_URL }}"
 
 
       # ----------------------------------------------------------
-      # Login to WSO2 API Manager
+      # Login
       # ----------------------------------------------------------
 
       - name: Login to WSO2 API Manager
         run: |
-          echo "Logging in to WSO2 API Manager..."
-
           apictl login target \
             -u "${{ secrets.WSO2_USERNAME }}" \
             -p "${{ secrets.WSO2_PASSWORD }}" \
@@ -168,12 +287,12 @@ jobs:
 
 
       # ----------------------------------------------------------
-      # Deploy WSO2 API
+      # Deploy API
       # ----------------------------------------------------------
 
       - name: Deploy API
         run: |
-          echo "Deploying WSO2 API..."
+          echo "Deploying API to UAT..."
 
           apictl import api \
             -f . \
@@ -182,4 +301,118 @@ jobs:
             --update \
             --verbose
 
-          echo "API deployment completed successfully."
+          echo "UAT deployment completed successfully."
+
+
+  # ============================================================
+  # 4. DEPLOY TO PROD
+  # ============================================================
+  #
+  # Trigger:
+  # Push to main
+  #
+  # Flow:
+  #
+  # UAT approved
+  #  ↓
+  # PR merged
+  #  ↓
+  # main
+  #  ↓
+  # PROD approval
+  #  ↓
+  # PROD
+  #
+
+  deploy-prod:
+    name: Deploy to PROD
+    runs-on: ubuntu-latest
+
+    needs: validate
+
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+
+    environment:
+      name: prod
+
+    steps:
+
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+
+      # ----------------------------------------------------------
+      # Download WSO2 apictl
+      # ----------------------------------------------------------
+
+      - name: Download and extract apictl
+        run: |
+          echo "Downloading WSO2 apictl..."
+
+          mkdir -p /tmp/apictl
+
+          curl -L \
+            -o /tmp/apictl.tar.gz \
+            https://github.com/wso2/product-apim-tooling/releases/download/v4.7.2/apictl-4.7.2-linux-amd64.tar.gz
+
+          tar -xzf /tmp/apictl.tar.gz -C /tmp/apictl
+
+
+      # ----------------------------------------------------------
+      # Add apictl to PATH
+      # ----------------------------------------------------------
+
+      - name: Add apictl to PATH
+        run: |
+          echo "/tmp/apictl/apictl" >> $GITHUB_PATH
+
+
+      # ----------------------------------------------------------
+      # Check apictl
+      # ----------------------------------------------------------
+
+      - name: Check apictl version
+        run: |
+          apictl version
+
+
+      # ----------------------------------------------------------
+      # Configure PROD WSO2 environment
+      # ----------------------------------------------------------
+
+      - name: Configure PROD WSO2 environment
+        run: |
+          echo "Configuring PROD WSO2 environment..."
+
+          apictl add env target \
+            --apim "${{ secrets.WSO2_APIM_URL }}"
+
+
+      # ----------------------------------------------------------
+      # Login
+      # ----------------------------------------------------------
+
+      - name: Login to WSO2 API Manager
+        run: |
+          apictl login target \
+            -u "${{ secrets.WSO2_USERNAME }}" \
+            -p "${{ secrets.WSO2_PASSWORD }}" \
+            -k
+
+
+      # ----------------------------------------------------------
+      # Deploy API
+      # ----------------------------------------------------------
+
+      - name: Deploy API
+        run: |
+          echo "Deploying API to PROD..."
+
+          apictl import api \
+            -f . \
+            -e target \
+            -k \
+            --update \
+            --verbose
+
+          echo "PROD deployment completed successfully."
