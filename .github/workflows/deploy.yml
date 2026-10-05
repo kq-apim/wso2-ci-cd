@@ -16,15 +16,17 @@ jobs:
 
       - name: Download and extract apictl
         run: |
-          curl -L -o apictl.tar.gz https://github.com/wso2/product-apim-tooling/releases/download/v4.7.2/apictl-4.7.2-linux-amd64.tar.gz
-          tar -xzf apictl.tar.gz
+          mkdir -p /tmp/apictl
+          curl -L -o /tmp/apictl.tar.gz https://github.com/wso2/product-apim-tooling/releases/download/v4.7.2/apictl-4.7.2-linux-amd64.tar.gz
+          tar -xzf /tmp/apictl.tar.gz -C /tmp/apictl
 
       - name: Add apictl to PATH
         run: |
-          echo "$GITHUB_WORKSPACE/apictl" >> $GITHUB_PATH
+          echo "/tmp/apictl/apictl" >> $GITHUB_PATH
 
       - name: Check apictl version
-        run: apictl version
+        run: |
+          apictl version
 
       - name: Configure WSO2 environment
         run: |
