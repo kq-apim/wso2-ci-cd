@@ -8,6 +8,11 @@ on:
 
   # Also allow the pipeline to be started manually
   workflow_dispatch:
+    inputs:
+      rollback_ref:
+        description: 'Git commit or tag to deploy for rollback'
+        required: true
+        default: 'dev'
 
 
 jobs:
@@ -28,6 +33,8 @@ jobs:
 
       - name: Checkout repository
         uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.rollback_ref || github.ref }}
 
 
       # ----------------------------------------------------------
@@ -37,29 +44,29 @@ jobs:
       - name: Check API project structure
         run: |
           echo "Checking WSO2 API project..."
-
+          
           if [ ! -f "api.yaml" ]; then
             echo "ERROR: api.yaml not found"
             exit 1
           fi
-
+          
           if [ ! -f "api_meta.yaml" ]; then
             echo "ERROR: api_meta.yaml not found"
             exit 1
           fi
-
+          
           if [ ! -f "Definitions/swagger.yaml" ]; then
             echo "ERROR: Definitions/swagger.yaml not found"
             exit 1
           fi
-
+          
           if [ ! -f "redocly.yaml" ]; then
             echo "ERROR: redocly.yaml not found"
             exit 1
           fi
-
+          
           echo "WSO2 API project structure is valid."
-
+      
 
       # ----------------------------------------------------------
       # Validate OpenAPI specification
@@ -68,12 +75,12 @@ jobs:
       - name: Validate OpenAPI specification
         run: |
           echo "Validating OpenAPI specification..."
-
+          
           npx @redocly/cli lint Definitions/swagger.yaml \
             --config redocly.yaml
-
+          
           echo "OpenAPI validation completed successfully."
-
+  
 
   # ============================================================
   # 2. DEPLOY TO DEV
@@ -96,6 +103,8 @@ jobs:
 
       - name: Checkout repository
         uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.rollback_ref || github.ref }}
 
 
       # ----------------------------------------------------------
@@ -105,15 +114,15 @@ jobs:
       - name: Download and extract apictl
         run: |
           echo "Downloading WSO2 apictl..."
-
+          
           mkdir -p /tmp/apictl
-
+          
           curl -L \
             -o /tmp/apictl.tar.gz \
             https://github.com/wso2/product-apim-tooling/releases/download/v4.7.2/apictl-4.7.2-linux-amd64.tar.gz
-
+          
           tar -xzf /tmp/apictl.tar.gz -C /tmp/apictl
-
+      
 
       # ----------------------------------------------------------
       # Add apictl to PATH
@@ -122,7 +131,7 @@ jobs:
       - name: Add apictl to PATH
         run: |
           echo "/tmp/apictl/apictl" >> $GITHUB_PATH
-
+      
 
       # ----------------------------------------------------------
       # Check apictl
@@ -131,7 +140,7 @@ jobs:
       - name: Check apictl version
         run: |
           apictl version
-
+      
 
       # ----------------------------------------------------------
       # Configure DEV WSO2 environment
@@ -140,10 +149,10 @@ jobs:
       - name: Configure WSO2 DEV environment
         run: |
           echo "Configuring DEV WSO2 environment..."
-
+          
           apictl add env target \
             --apim "${{ secrets.WSO2_APIM_URL }}"
-
+      
 
       # ----------------------------------------------------------
       # Login to DEV
@@ -155,7 +164,7 @@ jobs:
             -u "${{ secrets.WSO2_USERNAME }}" \
             -p "${{ secrets.WSO2_PASSWORD }}" \
             -k
-
+      
 
       # ----------------------------------------------------------
       # Deploy API to DEV
@@ -164,16 +173,16 @@ jobs:
       - name: Deploy API to DEV
         run: |
           echo "Deploying API to DEV..."
-
+          
           apictl import api \
             -f . \
             -e target \
             -k \
             --update \
             --verbose
-
+          
           echo "DEV deployment completed successfully."
-
+  
 
   # ============================================================
   # 3. DEPLOY TO PROD
@@ -207,8 +216,10 @@ jobs:
       # Checkout source code
       # ----------------------------------------------------------
 
-      - name: Checkout repository
+      - name: Checkout source code
         uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.rollback_ref || github.ref }}
 
 
       # ----------------------------------------------------------
@@ -218,15 +229,15 @@ jobs:
       - name: Download and extract apictl
         run: |
           echo "Downloading WSO2 apictl..."
-
+          
           mkdir -p /tmp/apictl
-
+          
           curl -L \
             -o /tmp/apictl.tar.gz \
             https://github.com/wso2/product-apim-tooling/releases/download/v4.7.2/apictl-4.7.2-linux-amd64.tar.gz
-
+          
           tar -xzf /tmp/apictl.tar.gz -C /tmp/apictl
-
+      
 
       # ----------------------------------------------------------
       # Add apictl to PATH
@@ -235,7 +246,7 @@ jobs:
       - name: Add apictl to PATH
         run: |
           echo "/tmp/apictl/apictl" >> $GITHUB_PATH
-
+      
 
       # ----------------------------------------------------------
       # Check apictl
@@ -244,7 +255,7 @@ jobs:
       - name: Check apictl version
         run: |
           apictl version
-
+      
 
       # ----------------------------------------------------------
       # Configure PROD WSO2 environment
@@ -253,10 +264,10 @@ jobs:
       - name: Configure WSO2 PROD environment
         run: |
           echo "Configuring PROD WSO2 environment..."
-
+          
           apictl add env target \
             --apim "${{ secrets.WSO2_APIM_URL }}"
-
+      
 
       # ----------------------------------------------------------
       # Login to PROD
@@ -268,7 +279,7 @@ jobs:
             -u "${{ secrets.WSO2_USERNAME }}" \
             -p "${{ secrets.WSO2_PASSWORD }}" \
             -k
-
+      
 
       # ----------------------------------------------------------
       # Deploy API to PROD
@@ -277,12 +288,12 @@ jobs:
       - name: Deploy API to PROD
         run: |
           echo "Deploying API to PROD..."
-
+          
           apictl import api \
             -f . \
             -e target \
             -k \
             --update \
             --verbose
-
+          
           echo "PROD deployment completed successfully."
