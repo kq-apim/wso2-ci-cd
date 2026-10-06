@@ -1,13 +1,57 @@
 name: WSO2 API CI/CD
 
 on:
-  # Run the pipeline when code is pushed to dev
+  # ============================================================
+  # AUTOMATIC DEPLOYMENT
+  # ============================================================
+  # Push to dev starts the normal CI/CD pipeline.
+  #
+  # Flow:
+  # Push to dev
+  #     ↓
+  # Validate
+  #     ↓
+  # Deploy DEV
+  #     ↓
+  # PROD approval
+  #     ↓
+  # Deploy PROD
+  # ============================================================
+
   push:
     branches:
       - dev
 
-  # Also allow the pipeline to be started manually
+  # ============================================================
+  # MANUAL DEPLOYMENT / ROLLBACK
+  # ============================================================
+  #
+  # From GitHub Actions -> Run workflow you can select:
+  #
+  #   Deploy
+  #   Rollback
+  #
+  # For Rollback, provide the Git commit SHA or tag that
+  # represents the version to restore.
+  #
+  # ============================================================
+
   workflow_dispatch:
+    inputs:
+
+      deployment_type:
+        description: 'Select deployment type'
+        required: true
+        type: choice
+        options:
+          - Deploy
+          - Rollback
+        default: Deploy
+
+      rollback_ref:
+        description: 'Git commit SHA or tag to restore (required for Rollback)'
+        required: false
+        type: string
 
 
 jobs:
@@ -28,7 +72,45 @@ jobs:
 
       - name: Checkout repository
         uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.deployment_type == 'Rollback' && inputs.rollback_ref || github.ref }}
 
+
+      # ----------------------------------------------------------
+      # Show deployment information
+      # ----------------------------------------------------------
+
+      - name: Show deployment information
+        run: |
+          echo "=========================================="
+          echo "Deployment type:"
+          echo "${{ inputs.deployment_type || 'Deploy' }}"
+          echo "=========================================="
+          
+          if [ "${{ inputs.deployment_type }}" = "Rollback" ]; then
+            echo "Rollback version:"
+            echo "${{ inputs.rollback_ref }}"
+          else
+            echo "Deploying current source version."
+          fi
+      
+
+      # ----------------------------------------------------------
+      # Validate rollback input
+      # ----------------------------------------------------------
+
+      - name: Validate rollback input
+        if: ${{ inputs.deployment_type == 'Rollback' }}
+        run: |
+          echo "Checking rollback configuration..."
+          
+          if [ -z "${{ inputs.rollback_ref }}" ]; then
+            echo "ERROR: A Git commit SHA or tag is required for rollback."
+            exit 1
+          fi
+          
+          echo "Rollback target: ${{ inputs.rollback_ref }}"
+      
 
       # ----------------------------------------------------------
       # Check WSO2 API project structure
@@ -37,29 +119,29 @@ jobs:
       - name: Check API project structure
         run: |
           echo "Checking WSO2 API project..."
-
+          
           if [ ! -f "api.yaml" ]; then
             echo "ERROR: api.yaml not found"
             exit 1
           fi
-
+          
           if [ ! -f "api_meta.yaml" ]; then
             echo "ERROR: api_meta.yaml not found"
             exit 1
           fi
-
+          
           if [ ! -f "Definitions/swagger.yaml" ]; then
             echo "ERROR: Definitions/swagger.yaml not found"
             exit 1
           fi
-
+          
           if [ ! -f "redocly.yaml" ]; then
             echo "ERROR: redocly.yaml not found"
             exit 1
           fi
-
+          
           echo "WSO2 API project structure is valid."
-
+      
 
       # ----------------------------------------------------------
       # Validate OpenAPI specification
@@ -68,12 +150,12 @@ jobs:
       - name: Validate OpenAPI specification
         run: |
           echo "Validating OpenAPI specification..."
-
+          
           npx @redocly/cli lint Definitions/swagger.yaml \
             --config redocly.yaml
-
+          
           echo "OpenAPI validation completed successfully."
-
+  
 
   # ============================================================
   # 2. DEPLOY TO DEV
@@ -96,7 +178,27 @@ jobs:
 
       - name: Checkout repository
         uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.deployment_type == 'Rollback' && inputs.rollback_ref || github.ref }}
 
+
+      # ----------------------------------------------------------
+      # Show deployment type
+      # ----------------------------------------------------------
+
+      - name: Show deployment type
+        run: |
+          echo "=========================================="
+          
+          if [ "${{ inputs.deployment_type }}" = "Rollback" ]; then
+            echo "ROLLBACK DEPLOYMENT"
+            echo "Version: ${{ inputs.rollback_ref }}"
+          else
+            echo "NORMAL DEPLOYMENT"
+          fi
+          
+          echo "=========================================="
+      
 
       # ----------------------------------------------------------
       # Download WSO2 apictl
@@ -105,15 +207,15 @@ jobs:
       - name: Download and extract apictl
         run: |
           echo "Downloading WSO2 apictl..."
-
+          
           mkdir -p /tmp/apictl
-
+          
           curl -L \
             -o /tmp/apictl.tar.gz \
             https://github.com/wso2/product-apim-tooling/releases/download/v4.7.2/apictl-4.7.2-linux-amd64.tar.gz
-
+          
           tar -xzf /tmp/apictl.tar.gz -C /tmp/apictl
-
+      
 
       # ----------------------------------------------------------
       # Add apictl to PATH
@@ -122,7 +224,7 @@ jobs:
       - name: Add apictl to PATH
         run: |
           echo "/tmp/apictl/apictl" >> $GITHUB_PATH
-
+      
 
       # ----------------------------------------------------------
       # Check apictl
@@ -131,7 +233,7 @@ jobs:
       - name: Check apictl version
         run: |
           apictl version
-
+      
 
       # ----------------------------------------------------------
       # Configure DEV WSO2 environment
@@ -140,10 +242,10 @@ jobs:
       - name: Configure WSO2 DEV environment
         run: |
           echo "Configuring DEV WSO2 environment..."
-
+          
           apictl add env target \
             --apim "${{ secrets.WSO2_APIM_URL }}"
-
+      
 
       # ----------------------------------------------------------
       # Login to DEV
@@ -155,7 +257,7 @@ jobs:
             -u "${{ secrets.WSO2_USERNAME }}" \
             -p "${{ secrets.WSO2_PASSWORD }}" \
             -k
-
+      
 
       # ----------------------------------------------------------
       # Deploy API to DEV
@@ -164,16 +266,16 @@ jobs:
       - name: Deploy API to DEV
         run: |
           echo "Deploying API to DEV..."
-
+          
           apictl import api \
             -f . \
             -e target \
             -k \
             --update \
             --verbose
-
+          
           echo "DEV deployment completed successfully."
-
+  
 
   # ============================================================
   # 3. DEPLOY TO PROD
@@ -207,9 +309,29 @@ jobs:
       # Checkout source code
       # ----------------------------------------------------------
 
-      - name: Checkout repository
+      - name: Checkout source code
         uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.deployment_type == 'Rollback' && inputs.rollback_ref || github.ref }}
 
+
+      # ----------------------------------------------------------
+      # Show deployment type
+      # ----------------------------------------------------------
+
+      - name: Show deployment type
+        run: |
+          echo "=========================================="
+          
+          if [ "${{ inputs.deployment_type }}" = "Rollback" ]; then
+            echo "ROLLBACK TO PROD"
+            echo "Version: ${{ inputs.rollback_ref }}"
+          else
+            echo "NORMAL DEPLOYMENT TO PROD"
+          fi
+          
+          echo "=========================================="
+      
 
       # ----------------------------------------------------------
       # Download WSO2 apictl
@@ -218,15 +340,15 @@ jobs:
       - name: Download and extract apictl
         run: |
           echo "Downloading WSO2 apictl..."
-
+          
           mkdir -p /tmp/apictl
-
+          
           curl -L \
             -o /tmp/apictl.tar.gz \
             https://github.com/wso2/product-apim-tooling/releases/download/v4.7.2/apictl-4.7.2-linux-amd64.tar.gz
-
+          
           tar -xzf /tmp/apictl.tar.gz -C /tmp/apictl
-
+      
 
       # ----------------------------------------------------------
       # Add apictl to PATH
@@ -235,7 +357,7 @@ jobs:
       - name: Add apictl to PATH
         run: |
           echo "/tmp/apictl/apictl" >> $GITHUB_PATH
-
+      
 
       # ----------------------------------------------------------
       # Check apictl
@@ -244,7 +366,7 @@ jobs:
       - name: Check apictl version
         run: |
           apictl version
-
+      
 
       # ----------------------------------------------------------
       # Configure PROD WSO2 environment
@@ -252,11 +374,11 @@ jobs:
 
       - name: Configure WSO2 PROD environment
         run: |
-          echo "Configuring PROD WSO2 environment..."
-
+          echo "Configuring WSO2 PROD environment..."
+          
           apictl add env target \
             --apim "${{ secrets.WSO2_APIM_URL }}"
-
+      
 
       # ----------------------------------------------------------
       # Login to PROD
@@ -268,7 +390,7 @@ jobs:
             -u "${{ secrets.WSO2_USERNAME }}" \
             -p "${{ secrets.WSO2_PASSWORD }}" \
             -k
-
+      
 
       # ----------------------------------------------------------
       # Deploy API to PROD
@@ -277,12 +399,12 @@ jobs:
       - name: Deploy API to PROD
         run: |
           echo "Deploying API to PROD..."
-
+          
           apictl import api \
             -f . \
             -e target \
             -k \
             --update \
             --verbose
-
+          
           echo "PROD deployment completed successfully."
