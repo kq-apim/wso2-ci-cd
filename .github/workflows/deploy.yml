@@ -1,18 +1,57 @@
 name: WSO2 API CI/CD
 
 on:
-  # Run the pipeline when code is pushed to dev
+  # ============================================================
+  # AUTOMATIC DEPLOYMENT
+  # ============================================================
+  # Push to dev starts the normal CI/CD pipeline.
+  #
+  # Flow:
+  # Push to dev
+  #     ↓
+  # Validate
+  #     ↓
+  # Deploy DEV
+  #     ↓
+  # PROD approval
+  #     ↓
+  # Deploy PROD
+  # ============================================================
+
   push:
     branches:
       - dev
 
-  # Also allow the pipeline to be started manually
+  # ============================================================
+  # MANUAL DEPLOYMENT / ROLLBACK
+  # ============================================================
+  #
+  # From GitHub Actions -> Run workflow you can select:
+  #
+  #   Deploy
+  #   Rollback
+  #
+  # For Rollback, provide the Git commit SHA or tag that
+  # represents the version to restore.
+  #
+  # ============================================================
+
   workflow_dispatch:
     inputs:
-      rollback_ref:
-        description: 'Git commit or tag to deploy for rollback'
+
+      deployment_type:
+        description: 'Select deployment type'
         required: true
-        default: 'dev'
+        type: choice
+        options:
+          - Deploy
+          - Rollback
+        default: Deploy
+
+      rollback_ref:
+        description: 'Git commit SHA or tag to restore (required for Rollback)'
+        required: false
+        type: string
 
 
 jobs:
@@ -34,8 +73,44 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
         with:
-          ref: ${{ inputs.rollback_ref || github.ref }}
+          ref: ${{ inputs.deployment_type == 'Rollback' && inputs.rollback_ref || github.ref }}
 
+
+      # ----------------------------------------------------------
+      # Show deployment information
+      # ----------------------------------------------------------
+
+      - name: Show deployment information
+        run: |
+          echo "=========================================="
+          echo "Deployment type:"
+          echo "${{ inputs.deployment_type || 'Deploy' }}"
+          echo "=========================================="
+          
+          if [ "${{ inputs.deployment_type }}" = "Rollback" ]; then
+            echo "Rollback version:"
+            echo "${{ inputs.rollback_ref }}"
+          else
+            echo "Deploying current source version."
+          fi
+      
+
+      # ----------------------------------------------------------
+      # Validate rollback input
+      # ----------------------------------------------------------
+
+      - name: Validate rollback input
+        if: ${{ inputs.deployment_type == 'Rollback' }}
+        run: |
+          echo "Checking rollback configuration..."
+          
+          if [ -z "${{ inputs.rollback_ref }}" ]; then
+            echo "ERROR: A Git commit SHA or tag is required for rollback."
+            exit 1
+          fi
+          
+          echo "Rollback target: ${{ inputs.rollback_ref }}"
+      
 
       # ----------------------------------------------------------
       # Check WSO2 API project structure
@@ -104,8 +179,26 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
         with:
-          ref: ${{ inputs.rollback_ref || github.ref }}
+          ref: ${{ inputs.deployment_type == 'Rollback' && inputs.rollback_ref || github.ref }}
 
+
+      # ----------------------------------------------------------
+      # Show deployment type
+      # ----------------------------------------------------------
+
+      - name: Show deployment type
+        run: |
+          echo "=========================================="
+          
+          if [ "${{ inputs.deployment_type }}" = "Rollback" ]; then
+            echo "ROLLBACK DEPLOYMENT"
+            echo "Version: ${{ inputs.rollback_ref }}"
+          else
+            echo "NORMAL DEPLOYMENT"
+          fi
+          
+          echo "=========================================="
+      
 
       # ----------------------------------------------------------
       # Download WSO2 apictl
@@ -219,8 +312,26 @@ jobs:
       - name: Checkout source code
         uses: actions/checkout@v4
         with:
-          ref: ${{ inputs.rollback_ref || github.ref }}
+          ref: ${{ inputs.deployment_type == 'Rollback' && inputs.rollback_ref || github.ref }}
 
+
+      # ----------------------------------------------------------
+      # Show deployment type
+      # ----------------------------------------------------------
+
+      - name: Show deployment type
+        run: |
+          echo "=========================================="
+          
+          if [ "${{ inputs.deployment_type }}" = "Rollback" ]; then
+            echo "ROLLBACK TO PROD"
+            echo "Version: ${{ inputs.rollback_ref }}"
+          else
+            echo "NORMAL DEPLOYMENT TO PROD"
+          fi
+          
+          echo "=========================================="
+      
 
       # ----------------------------------------------------------
       # Download WSO2 apictl
@@ -263,7 +374,7 @@ jobs:
 
       - name: Configure WSO2 PROD environment
         run: |
-          echo "Configuring PROD WSO2 environment..."
+          echo "Configuring WSO2 PROD environment..."
           
           apictl add env target \
             --apim "${{ secrets.WSO2_APIM_URL }}"
