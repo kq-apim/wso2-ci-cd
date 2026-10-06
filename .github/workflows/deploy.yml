@@ -4,41 +4,43 @@ on:
   # ============================================================
   # AUTOMATIC DEPLOYMENT
   # ============================================================
-  # Push to dev starts the normal CI/CD pipeline.
   #
-  # Flow:
-  # Push to dev
-  #     ↓
+  # Push to dev:
+  #
   # Validate
+  #     ↓
+  # Save API artifact
   #     ↓
   # Deploy DEV
   #     ↓
   # PROD approval
   #     ↓
   # Deploy PROD
+  #
   # ============================================================
-
+  
   push:
     branches:
       - dev
-
+  
   # ============================================================
   # MANUAL DEPLOYMENT / ROLLBACK
   # ============================================================
   #
-  # From GitHub Actions -> Run workflow you can select:
+  # From GitHub Actions -> Run workflow:
   #
+  # Deployment type:
   #   Deploy
   #   Rollback
   #
-  # For Rollback, provide the Git commit SHA or tag that
-  # represents the version to restore.
+  # For Rollback, enter the GitHub Actions Run ID of a
+  # previous successful deployment.
   #
   # ============================================================
-
+  
   workflow_dispatch:
     inputs:
-
+      
       deployment_type:
         description: 'Select deployment type'
         required: true
@@ -47,141 +49,264 @@ on:
           - Deploy
           - Rollback
         default: Deploy
-
-      rollback_ref:
-        description: 'Git commit SHA or tag to restore (required for Rollback)'
+      
+      rollback_run_id:
+        description: 'GitHub Actions Run ID of the successful deployment to restore'
         required: false
         type: string
 
 
+# ==============================================================
+# PERMISSIONS
+# ==============================================================
+
+permissions:
+  contents: read
+  actions: read
+
+
 jobs:
-
+  
   # ============================================================
-  # 1. VALIDATE
+  # 1. PREPARE AND VALIDATE
   # ============================================================
-
+  
   validate:
     name: Validate API
     runs-on: ubuntu-latest
-
+    
     steps:
-
+      
       # ----------------------------------------------------------
-      # Checkout source code
+      # Checkout repository
+      # ----------------------------------------------------------
+      #
+      # For normal deployment, we need the current source code.
+      #
+      # For rollback, we also checkout the repository so that the
+      # workflow itself can run, but we DO NOT use the current
+      # API files for deployment.
+      #
+      # The rollback API comes from the previously saved artifact.
+      #
       # ----------------------------------------------------------
 
       - name: Checkout repository
         uses: actions/checkout@v4
-        with:
-          ref: ${{ inputs.deployment_type == 'Rollback' && inputs.rollback_ref || github.ref }}
+      
+      
+      # ==========================================================
+      # NORMAL DEPLOYMENT
+      # ==========================================================
 
-
-      # ----------------------------------------------------------
-      # Show deployment information
-      # ----------------------------------------------------------
-
-      - name: Show deployment information
+      - name: Prepare current API for deployment
+        if: ${{ inputs.deployment_type != 'Rollback' }}
         run: |
           echo "=========================================="
-          echo "Deployment type:"
-          echo "${{ inputs.deployment_type || 'Deploy' }}"
+          echo "NORMAL DEPLOYMENT"
           echo "=========================================="
           
-          if [ "${{ inputs.deployment_type }}" = "Rollback" ]; then
-            echo "Rollback version:"
-            echo "${{ inputs.rollback_ref }}"
-          else
-            echo "Deploying current source version."
-          fi
-      
-
-      # ----------------------------------------------------------
-      # Validate rollback input
-      # ----------------------------------------------------------
-
-      - name: Validate rollback input
-        if: ${{ inputs.deployment_type == 'Rollback' }}
-        run: |
-          echo "Checking rollback configuration..."
+          echo "Preparing WSO2 API project..."
           
-          if [ -z "${{ inputs.rollback_ref }}" ]; then
-            echo "ERROR: A Git commit SHA or tag is required for rollback."
-            exit 1
-          fi
+          mkdir -p /tmp/wso2-api-artifact
           
-          echo "Rollback target: ${{ inputs.rollback_ref }}"
+          cp api.yaml /tmp/wso2-api-artifact/
+          cp api_meta.yaml /tmp/wso2-api-artifact/
+          cp redocly.yaml /tmp/wso2-api-artifact/
+          
+          cp -R Definitions /tmp/wso2-api-artifact/
+          
+          echo "API project prepared."
       
-
+      
       # ----------------------------------------------------------
-      # Check WSO2 API project structure
+      # Check API project structure
       # ----------------------------------------------------------
 
       - name: Check API project structure
+        if: ${{ inputs.deployment_type != 'Rollback' }}
         run: |
           echo "Checking WSO2 API project..."
           
-          if [ ! -f "api.yaml" ]; then
+          if [ ! -f "/tmp/wso2-api-artifact/api.yaml" ]; then
             echo "ERROR: api.yaml not found"
             exit 1
           fi
           
-          if [ ! -f "api_meta.yaml" ]; then
+          if [ ! -f "/tmp/wso2-api-artifact/api_meta.yaml" ]; then
             echo "ERROR: api_meta.yaml not found"
             exit 1
           fi
           
-          if [ ! -f "Definitions/swagger.yaml" ]; then
+          if [ ! -f "/tmp/wso2-api-artifact/Definitions/swagger.yaml" ]; then
             echo "ERROR: Definitions/swagger.yaml not found"
             exit 1
           fi
           
-          if [ ! -f "redocly.yaml" ]; then
+          if [ ! -f "/tmp/wso2-api-artifact/redocly.yaml" ]; then
             echo "ERROR: redocly.yaml not found"
             exit 1
           fi
           
           echo "WSO2 API project structure is valid."
       
-
+      
       # ----------------------------------------------------------
-      # Validate OpenAPI specification
+      # Validate current OpenAPI specification
       # ----------------------------------------------------------
 
       - name: Validate OpenAPI specification
+        if: ${{ inputs.deployment_type != 'Rollback' }}
         run: |
           echo "Validating OpenAPI specification..."
           
-          npx @redocly/cli lint Definitions/swagger.yaml \
-            --config redocly.yaml
+          npx @redocly/cli lint \
+            /tmp/wso2-api-artifact/Definitions/swagger.yaml \
+            --config /tmp/wso2-api-artifact/redocly.yaml
           
           echo "OpenAPI validation completed successfully."
-  
+      
+      
+      # ==========================================================
+      # ROLLBACK
+      # ==========================================================
 
+      - name: Validate rollback input
+        if: ${{ inputs.deployment_type == 'Rollback' }}
+        run: |
+          echo "=========================================="
+          echo "ROLLBACK DEPLOYMENT"
+          echo "=========================================="
+          
+          if [ -z "${{ inputs.rollback_run_id }}" ]; then
+            echo "ERROR: A previous successful GitHub Actions Run ID is required."
+            exit 1
+          fi
+          
+          echo "Rollback Run ID: ${{ inputs.rollback_run_id }}"
+      
+      
+      # ----------------------------------------------------------
+      # Download previously successful API artifact
+      # ----------------------------------------------------------
+
+      - name: Download previous successful API artifact
+        if: ${{ inputs.deployment_type == 'Rollback' }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          echo "Downloading API artifact from previous successful run..."
+          
+          mkdir -p /tmp/rollback-api
+          
+          gh run download "${{ inputs.rollback_run_id }}" \
+            --repo "${{ github.repository }}" \
+            --name wso2-api-artifact \
+            --dir /tmp/rollback-api
+          
+          echo "Previous API artifact downloaded."
+          
+          echo "Contents:"
+          find /tmp/rollback-api -maxdepth 3 -type f
+      
+      
+      # ----------------------------------------------------------
+      # Check rollback artifact structure
+      # ----------------------------------------------------------
+
+      - name: Check rollback API project structure
+        if: ${{ inputs.deployment_type == 'Rollback' }}
+        run: |
+          echo "Checking rollback API project..."
+          
+          if [ ! -f "/tmp/rollback-api/api.yaml" ]; then
+            echo "ERROR: api.yaml not found in rollback artifact"
+            exit 1
+          fi
+          
+          if [ ! -f "/tmp/rollback-api/api_meta.yaml" ]; then
+            echo "ERROR: api_meta.yaml not found in rollback artifact"
+            exit 1
+          fi
+          
+          if [ ! -f "/tmp/rollback-api/Definitions/swagger.yaml" ]; then
+            echo "ERROR: Definitions/swagger.yaml not found in rollback artifact"
+            exit 1
+          fi
+          
+          if [ ! -f "/tmp/rollback-api/redocly.yaml" ]; then
+            echo "ERROR: redocly.yaml not found in rollback artifact"
+            exit 1
+          fi
+          
+          echo "Rollback API project structure is valid."
+      
+      
+      # ----------------------------------------------------------
+      # Validate rollback OpenAPI specification
+      # ----------------------------------------------------------
+      #
+      # IMPORTANT:
+      #
+      # The rollback uses the redocly.yaml that was saved with
+      # the previous successful API artifact.
+      #
+      # It does NOT use today's redocly.yaml.
+      #
+      # ----------------------------------------------------------
+
+      - name: Validate rollback OpenAPI specification
+        if: ${{ inputs.deployment_type == 'Rollback' }}
+        run: |
+          echo "Validating rollback OpenAPI specification..."
+          
+          npx @redocly/cli lint \
+            /tmp/rollback-api/Definitions/swagger.yaml \
+            --config /tmp/rollback-api/redocly.yaml
+          
+          echo "Rollback OpenAPI validation completed successfully."
+      
+      
+      # ==========================================================
+      # SAVE ARTIFACT
+      # ==========================================================
+
+      - name: Save validated API artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: wso2-api-artifact
+          path: |
+            ${{ inputs.deployment_type == 'Rollback' && '/tmp/rollback-api' || '/tmp/wso2-api-artifact' }}
+          if-no-files-found: error
+          retention-days: 30
+  
+  
   # ============================================================
   # 2. DEPLOY TO DEV
   # ============================================================
-
+  
   deploy-dev:
     name: Deploy to DEV
     runs-on: ubuntu-latest
-
+    
     needs: validate
-
+    
     environment:
       name: dev
-
+    
     steps:
-
+      
       # ----------------------------------------------------------
-      # Checkout source code
+      # Download validated API artifact
       # ----------------------------------------------------------
 
-      - name: Checkout repository
-        uses: actions/checkout@v4
+      - name: Download validated API artifact
+        uses: actions/download-artifact@v4
         with:
-          ref: ${{ inputs.deployment_type == 'Rollback' && inputs.rollback_ref || github.ref }}
-
-
+          name: wso2-api-artifact
+          path: /tmp/wso2-api
+      
+      
       # ----------------------------------------------------------
       # Show deployment type
       # ----------------------------------------------------------
@@ -192,14 +317,15 @@ jobs:
           
           if [ "${{ inputs.deployment_type }}" = "Rollback" ]; then
             echo "ROLLBACK DEPLOYMENT"
-            echo "Version: ${{ inputs.rollback_ref }}"
+            echo "Previous Run ID: ${{ inputs.rollback_run_id }}"
           else
             echo "NORMAL DEPLOYMENT"
+            echo "Current source version"
           fi
           
           echo "=========================================="
       
-
+      
       # ----------------------------------------------------------
       # Download WSO2 apictl
       # ----------------------------------------------------------
@@ -216,7 +342,7 @@ jobs:
           
           tar -xzf /tmp/apictl.tar.gz -C /tmp/apictl
       
-
+      
       # ----------------------------------------------------------
       # Add apictl to PATH
       # ----------------------------------------------------------
@@ -225,7 +351,7 @@ jobs:
         run: |
           echo "/tmp/apictl/apictl" >> $GITHUB_PATH
       
-
+      
       # ----------------------------------------------------------
       # Check apictl
       # ----------------------------------------------------------
@@ -234,7 +360,7 @@ jobs:
         run: |
           apictl version
       
-
+      
       # ----------------------------------------------------------
       # Configure DEV WSO2 environment
       # ----------------------------------------------------------
@@ -246,7 +372,7 @@ jobs:
           apictl add env target \
             --apim "${{ secrets.WSO2_APIM_URL }}"
       
-
+      
       # ----------------------------------------------------------
       # Login to DEV
       # ----------------------------------------------------------
@@ -258,7 +384,7 @@ jobs:
             -p "${{ secrets.WSO2_PASSWORD }}" \
             -k
       
-
+      
       # ----------------------------------------------------------
       # Deploy API to DEV
       # ----------------------------------------------------------
@@ -268,7 +394,7 @@ jobs:
           echo "Deploying API to DEV..."
           
           apictl import api \
-            -f . \
+            -f /tmp/wso2-api \
             -e target \
             -k \
             --update \
@@ -276,45 +402,40 @@ jobs:
           
           echo "DEV deployment completed successfully."
   
-
+  
   # ============================================================
   # 3. DEPLOY TO PROD
   # ============================================================
   #
-  # This job depends on DEV succeeding.
-  #
-  # The "prod" GitHub Environment must have:
-  #
-  #   Required reviewers
-  #
+  # The PROD GitHub Environment must have Required Reviewers
   # configured.
   #
-  # GitHub will automatically PAUSE this job and wait for
-  # the assigned approver.
+  # GitHub will pause this job before executing its steps.
   #
   # ============================================================
-
+  
   deploy-prod:
     name: Deploy to PROD
     runs-on: ubuntu-latest
-
+    
     needs: deploy-dev
-
+    
     environment:
       name: prod
-
+    
     steps:
-
+      
       # ----------------------------------------------------------
-      # Checkout source code
+      # Download validated API artifact
       # ----------------------------------------------------------
 
-      - name: Checkout source code
-        uses: actions/checkout@v4
+      - name: Download validated API artifact
+        uses: actions/download-artifact@v4
         with:
-          ref: ${{ inputs.deployment_type == 'Rollback' && inputs.rollback_ref || github.ref }}
-
-
+          name: wso2-api-artifact
+          path: /tmp/wso2-api
+      
+      
       # ----------------------------------------------------------
       # Show deployment type
       # ----------------------------------------------------------
@@ -324,15 +445,15 @@ jobs:
           echo "=========================================="
           
           if [ "${{ inputs.deployment_type }}" = "Rollback" ]; then
-            echo "ROLLBACK TO PROD"
-            echo "Version: ${{ inputs.rollback_ref }}"
+            echo "ROLLBACK TO PREVIOUS VERSION"
+            echo "Previous Run ID: ${{ inputs.rollback_run_id }}"
           else
             echo "NORMAL DEPLOYMENT TO PROD"
           fi
           
           echo "=========================================="
       
-
+      
       # ----------------------------------------------------------
       # Download WSO2 apictl
       # ----------------------------------------------------------
@@ -349,7 +470,7 @@ jobs:
           
           tar -xzf /tmp/apictl.tar.gz -C /tmp/apictl
       
-
+      
       # ----------------------------------------------------------
       # Add apictl to PATH
       # ----------------------------------------------------------
@@ -358,7 +479,7 @@ jobs:
         run: |
           echo "/tmp/apictl/apictl" >> $GITHUB_PATH
       
-
+      
       # ----------------------------------------------------------
       # Check apictl
       # ----------------------------------------------------------
@@ -367,19 +488,19 @@ jobs:
         run: |
           apictl version
       
-
+      
       # ----------------------------------------------------------
       # Configure PROD WSO2 environment
       # ----------------------------------------------------------
 
       - name: Configure WSO2 PROD environment
         run: |
-          echo "Configuring WSO2 PROD environment..."
+          echo "Configuring PROD WSO2 environment..."
           
           apictl add env target \
             --apim "${{ secrets.WSO2_APIM_URL }}"
       
-
+      
       # ----------------------------------------------------------
       # Login to PROD
       # ----------------------------------------------------------
@@ -391,7 +512,7 @@ jobs:
             -p "${{ secrets.WSO2_PASSWORD }}" \
             -k
       
-
+      
       # ----------------------------------------------------------
       # Deploy API to PROD
       # ----------------------------------------------------------
@@ -401,7 +522,7 @@ jobs:
           echo "Deploying API to PROD..."
           
           apictl import api \
-            -f . \
+            -f /tmp/wso2-api \
             -e target \
             -k \
             --update \
