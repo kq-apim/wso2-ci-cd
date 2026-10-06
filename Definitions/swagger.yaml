@@ -128,26 +128,26 @@ paths:
           description: User not found.
       summary: Get a user by ID
 
-    put:
-      description: Updates user profile to the system.
-      operationId: createUser
-      requestBody:
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/UserCreationInput'
-        description: User data to update
-        required: true
-      responses:
-        "201":
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/User'
-          description: User successfully updated.
-        "400":
-          description: Invalid request payload.
-      summary: Updates user info
+#    put:
+#      description: Updates user profile to the system.
+#      operationId: createUser
+#      requestBody:
+#        content:
+#          application/json:
+#            schema:
+#              $ref: '#/components/schemas/UserCreationInput'
+#        description: User data to update
+#        required: true
+#      responses:
+#        "201":
+#          content:
+#            application/json:
+#              schema:
+#                $ref: '#/components/schemas/User'
+#          description: User successfully updated.
+#        "400":
+#          description: Invalid request payload.
+#      summary: Updates user info
 
 
 servers:
