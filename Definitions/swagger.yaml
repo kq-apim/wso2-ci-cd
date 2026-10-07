@@ -1,6 +1,20 @@
+openapi: 3.0.3
+
+info:
+  title: User Management API
+  description: A sample API for managing user profiles. Learn more at the [OpenAPI Specification GitHub](https://github.com/oai/openapi-specification).
+  version: 1.0.0
+
+servers:
+  - description: Production server
+    url: https://example.com
+  - description: Staging server for testing
+    url: https://example.com
+
 components:
   schemas:
     User:
+      type: object
       properties:
         createdAt:
           example: "2026-03-27T10:00:00Z"
@@ -18,11 +32,12 @@ components:
           example: Jane Doe
           type: string
       required:
-      - id
-      - name
-      - email
-      type: object
+        - id
+        - name
+        - email
+
     UserCreationInput:
+      type: object
       properties:
         email:
           example: jane.doe@example.com
@@ -32,41 +47,36 @@ components:
           example: Jane Doe
           type: string
       required:
-      - name
-      - email
-      type: object
-info:
-  description: A sample API for managing user profiles. Learn more at the [OpenAPI
-    Specification GitHub](https://github.com/oai/openapi-specification).
-  title: User Management API
-  version: 1.0.0
-openapi: 3.0.3
+        - name
+        - email
+
 paths:
   /users:
     get:
       description: Returns a list of all registered users.
       operationId: listUsers
       parameters:
-      - description: How many items to return at one time (max 100)
-        in: query
-        name: limit
-        required: false
-        schema:
-          default: 20
-          format: int32
-          type: integer
+        - description: How many items to return at one time (max 100)
+          in: query
+          name: limit
+          required: false
+          schema:
+            default: 20
+            format: int32
+            type: integer
       responses:
         "200":
           content:
             application/json:
               schema:
+                type: array
                 items:
                   $ref: '#/components/schemas/User'
-                type: array
           description: A successful response containing the array of users.
         "500":
           description: Internal server error.
       summary: List all users
+
     post:
       description: Adds a new user profile to the system.
       operationId: createUser
@@ -88,19 +98,18 @@ paths:
           description: Invalid request payload.
       summary: Create a new user
 
-
   /users/{userId}:
     get:
       description: Retrieves a specific user profile using their unique numeric ID.
       operationId: getUserById
       parameters:
-      - description: The numeric ID of the user to retrieve.
-        in: path
-        name: userId
-        required: true
-        schema:
-          format: int64
-          type: integer
+        - description: The numeric ID of the user to retrieve.
+          in: path
+          name: userId
+          required: true
+          schema:
+            format: int64
+            type: integer
       responses:
         "200":
           content:
@@ -111,12 +120,12 @@ paths:
         "404":
           description: User not found.
       summary: Get a user by ID
-  /user/{userId}:
+
     delete:
-      description: Deletes the user's record using their unique identifier
+      description: Deletes the user's record using their unique identifier.
       operationId: deleteUserById
       parameters:
-        - description: The numeric ID of the user to retrieve.
+        - description: The numeric ID of the user to delete.
           in: path
           name: userId
           required: true
@@ -126,11 +135,19 @@ paths:
       responses:
         "404":
           description: User not found.
-      summary: Get a user by ID
+      summary: Delete a user by ID
 
     put:
-      description: Updates user profile to the system.
+      description: Updates user profile in the system.
       operationId: updateUser
+      parameters:
+        - description: The numeric ID of the user to update.
+          in: path
+          name: userId
+          required: true
+          schema:
+            format: int64
+            type: integer
       requestBody:
         content:
           application/json:
@@ -147,11 +164,4 @@ paths:
           description: User successfully updated.
         "400":
           description: Invalid request payload.
-      summary: Updates user info
-
-
-servers:
-- description: Production server
-  url: https://example.com
-- description: Staging server for testing
-  url: https://example.com
+      summary: Update user info
