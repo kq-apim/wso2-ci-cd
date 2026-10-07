@@ -130,7 +130,7 @@ paths:
 
     put:
       description: Updates user profile to the system.
-      operationId: createUser
+      operationId: updateUser
       requestBody:
         content:
           application/json:
